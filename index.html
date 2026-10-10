@@ -391,6 +391,29 @@ canvas{display:block;}
   .stats-header{flex-wrap:wrap;}
 }
 
+/* 数据安全 */
+.alert{display:block;cursor:pointer;margin-top:10px;padding:9px 12px;border-radius:8px;font-size:12px;line-height:1.7;text-decoration:none;}
+.alert.warn{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.4);color:var(--yellow);}
+.alert.bad{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.4);color:var(--rb);}
+.alert:hover{filter:brightness(1.15);}
+.safety-row{display:grid;grid-template-columns:10px 92px 1fr;gap:10px;align-items:start;padding:5px 0;font-size:12px;line-height:1.7;}
+.safety-row b{color:var(--text);}
+.safety-dot{width:8px;height:8px;border-radius:50%;margin-top:7px;background:var(--dim);}
+.safety-row.ok .safety-dot{background:var(--gb);}
+.safety-row.warn .safety-dot{background:var(--yellow);}
+.safety-row.bad .safety-dot{background:var(--rb);}
+.snap-row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.snap-row:last-child{border-bottom:none;}
+.data-link{color:var(--accent);font-size:12px;}
+.data-form{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.data-in{flex:1;min-width:160px;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--text);
+  font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;}
+.data-in:focus{border-color:var(--accent);}
+.cloud-ok{color:var(--gb);}.cloud-error,.cloud-auth{color:var(--rb);}.cloud-offline{color:var(--yellow);}
+@media (max-width:640px){.safety-row{grid-template-columns:10px 76px 1fr;}}
+.data-steps{font-size:12px;color:var(--dim);line-height:2;margin:8px 0 0;}
+.data-steps b{color:var(--text);font-weight:700;}
+
 </style>
 </head>
 <body>
@@ -410,6 +433,7 @@ canvas{display:block;}
         <div class="home-hero">
           <h1>选择章节，开始听写</h1>
           <p id="home-sub"></p>
+          <div id="home-alert"></div>
         </div>
         <div id="home-body"></div>
       </div>
@@ -424,6 +448,47 @@ canvas{display:block;}
         <div class="data-card">
           <div class="data-k">当前数据</div>
           <div class="data-v" id="current-data-info"></div>
+        </div>
+
+        <div class="data-card" id="safety-card">
+          <div class="data-k">数据安全检查</div>
+          <div id="safety-list" class="data-v"></div>
+        </div>
+
+        <div class="data-card">
+          <div class="data-k">☁ 云同步 <span class="data-sub">GitHub 私有仓库 · 自动同步 · 每次同步都留一个历史版本</span></div>
+          <div id="cloud-on" style="display:none;">
+            <div class="data-v">仓库：<b id="cloud-repo-show"></b> · 令牌 …<span id="cloud-token-tail"></span></div>
+            <div class="data-v" id="cloud-status" style="margin:8px 0;"></div>
+            <div class="data-row">
+              <button class="btn btn-primary btn-sm" onclick="cloudSyncNow()">立即同步</button>
+              <button class="btn btn-ghost btn-sm" onclick="cloudDisconnect()">断开</button>
+              <a id="cloud-history-link" class="data-link" href="#" target="_blank" rel="noopener">在 GitHub 查看历史版本 ↗</a>
+            </div>
+          </div>
+          <div id="cloud-setup">
+            <div class="data-v">先在 GitHub 生成一个<b>只能读写这一个私有仓库</b>的令牌（只做一次，约 3 分钟）：</div>
+            <div class="data-steps">
+              1. 打开 <a class="data-link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → 新建细粒度令牌 ↗</a>（用 bentontomiko994-maker 登录）<br>
+              2. <b>Token name</b> 随便填，比如「王陆听写」；<b>Expiration</b> 选最长的<br>
+              3. <b>Repository access</b> 选 <b>Only select repositories</b>，只勾 <code>wanglu-dictation-data</code><br>
+              4. <b>Permissions → Repository permissions</b>，把 <b>Contents</b> 改成 <b>Read and write</b>，其它都不动<br>
+              5. 点 <b>Generate token</b>，复制 <code>github_pat_</code> 开头的那一长串<br>
+              6. 粘贴到下面，点「连接并同步」。<b>再把令牌存进 Mac 的「密码」App</b>：万一浏览器把记录清掉，重新连接时还要用一次
+            </div>
+            <form class="data-form" onsubmit="event.preventDefault();cloudConnect();return false;">
+              <input type="text" id="cloud-repo" class="data-in" spellcheck="false" autocomplete="off" aria-label="云端仓库">
+              <input type="password" id="cloud-token" class="data-in" placeholder="粘贴令牌 github_pat_…" spellcheck="false" autocomplete="off" aria-label="令牌">
+              <button class="btn btn-primary btn-sm" type="submit">连接并同步</button>
+            </form>
+            <div class="data-res" id="cloud-connect-result" style="margin-top:8px;"></div>
+            <div class="data-v" style="margin-top:8px;font-size:11px;">令牌只存在这个浏览器里，只能读写那一个仓库，拿它做不了别的事。</div>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="data-k">本机自动快照 <span class="data-sub">每天一份保留 30 天；清空 / 导入 / 恢复 / 云端覆盖之前也会自动存一份</span></div>
+          <div id="snap-list" class="data-v"></div>
         </div>
 
         <div class="data-card">
@@ -6709,9 +6774,9 @@ const MASTER_STREAK=2;   // 错题测试里连续写对几次 = 掌握
 
 // ── STORAGE ──
 function getHist(){return getLS('wl3_hist');}
-function saveHist(h){setLS('wl3_hist',h);}
+function saveHist(h){setLS('wl3_hist',h);markDirty();}
 function getWb(){return getLS('wl3_wb');}
-function saveWb(w){setLS('wl3_wb',w);}
+function saveWb(w){setLS('wl3_wb',w);markDirty();}
 
 function recordResult(chap,pct,correct,total,wrongWords,allResults,mode,extra){
   const h=getHist();
@@ -6815,7 +6880,7 @@ function activateTab(id){
 }
 function toHome(){saveDraftNow();stopAllAudio();renderHome();showScreen('home');activateTab('home');}
 function toWb(){saveDraftNow();stopAllAudio();wbLastAuto=-1;showScreen('wb');activateTab('wb');renderWb();}
-function toData(){saveDraftNow();stopAllAudio();refreshDataInfo();showScreen('data');activateTab('data');}
+function toData(){saveDraftNow();stopAllAudio();refreshDataInfo();showScreen('data');activateTab('data');renderCloudCard();renderSafety();}
 const toImport=toData;
 
 // ── HOME ──
@@ -8332,6 +8397,7 @@ function applyClean(){
   const del=boxes.filter(c=>c.checked).map(c=>c.value);
   const keep=boxes.filter(c=>!c.checked).map(c=>c.value);
   const wb=getWb();
+  takeSnapshot('pre-clean');
   setLS('wl3_wb_backup',{ts:new Date().toISOString(),wb:JSON.parse(JSON.stringify(wb))});
   del.forEach(k=>{delete wb[k];});
   saveWb(wb);
@@ -8383,6 +8449,8 @@ function exportData(){
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   qs('#export-result').textContent='已下载备份文件 ✓';
+  const m=getMeta();m.lastExport=new Date().toISOString();saveMeta(m);
+  renderSafety();
 }
 function copyExport(){
   const txt=JSON.stringify(buildExport());
@@ -8429,6 +8497,7 @@ function doImport(){
   if(!inc||typeof inc!=='object'||!(inc.hist||inc.wb||inc.wl3_hist||inc.wl3_wb)){
     out.innerHTML='<span style="color:var(--rb)">没找到听写记录（hist）或生词本（wb），格式不对</span>';return;
   }
+  takeSnapshot('pre-import');
   const r=mergeData(inc);
   if(inc.audio&&typeof inc.audio==='object'){Object.assign(audioSettings,inc.audio);saveAudioSettings();syncControls();}
   out.innerHTML=`<span style="color:var(--gb)">导入完成：新增听写记录 ${r.addS} 次、生词 ${r.addW} 个（已有的不会重复）</span>`;
@@ -8436,9 +8505,11 @@ function doImport(){
   refreshDataInfo();
 }
 function clearAllData(){
-  if(!confirm('清空本浏览器里所有听写记录、生词本和草稿？此操作不能撤销（建议先导出备份）。'))return;
+  if(!confirm('清空本浏览器里所有听写记录、生词本和草稿？\n（云端备份和本机快照不会被清空：开着云同步的话，下次打开会自动把记录恢复回来。）'))return;
   if(!confirm('再确认一次：真的清空吗？'))return;
+  takeSnapshot('pre-clean-all');
   ['wl3_hist','wl3_wb','wl3_draft','wl3_wb_backup','wl3_v6'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
+  { const m=getMeta();m.syncedRev=0;m.dirty=false;saveMeta(m);scheduleCloudSync(800); }   // 让下一次同步把云端记录拉回来
   refreshDataInfo();renderHome();
   qs('#import-result').innerHTML='<span style="color:var(--dim)">已清空</span>';
 }
@@ -8529,11 +8600,368 @@ document.addEventListener('click',e=>{
 window.addEventListener('pagehide',saveDraftNow);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)saveDraftNow();});
 
+
+// ── 数据安全：持久存储 / 本机快照 / GitHub 云同步 ──
+const META_KEY='wl3_meta',CLOUD_KEY='wl3_cloud',CLOUD_FILE='wanglu-data.json';
+const CLOUD_REPO_DEFAULT='bentontomiko994-maker/wanglu-dictation-data';
+
+function getMeta(){
+  const m=getLS(META_KEY);
+  if(!m.device){m.device='d'+Math.random().toString(36).slice(2,8);m.syncedRev=0;m.dirty=false;setLS(META_KEY,m);}
+  return m;
+}
+function saveMeta(m){setLS(META_KEY,m);}
+function hasDataIn(d){
+  return !!d&&(Object.values(d.hist||{}).some(a=>(a||[]).length>0)||Object.keys(d.wb||{}).length>0);
+}
+function localHasData(){return hasDataIn({hist:getHist(),wb:getWb()});}
+function dataPayload(){
+  return{app:'wanglu-dictation',version:6,savedAt:new Date().toISOString(),device:getMeta().device,hist:getHist(),wb:getWb()};
+}
+function countsOf(d){
+  return{sessions:Object.values(d.hist||{}).reduce((a,x)=>a+(x||[]).length,0),words:Object.keys(d.wb||{}).length};
+}
+
+// 每次改了听写记录 / 生词本都会走到这里：标记「有未同步的改动」，并安排云同步和快照
+let snapTimer=null;
+function markDirty(){
+  const m=getMeta();
+  m.dirty=true;m.changedAt=Date.now();
+  saveMeta(m);
+  scheduleCloudSync(5000);
+  clearTimeout(snapTimer);
+  snapTimer=setTimeout(()=>takeSnapshot('auto'),20000);
+  renderSafetyChip();
+}
+
+// ── IndexedDB：本机快照（和 localStorage 分开存的第二份，防误操作）──
+let _db=null;
+function idb(){
+  if(_db)return _db;
+  _db=new Promise((res,rej)=>{
+    if(!window.indexedDB){rej(new Error('no indexedDB'));return;}
+    const r=indexedDB.open('wl3db',1);
+    r.onupgradeneeded=()=>{r.result.createObjectStore('snaps',{keyPath:'id'});};
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+  return _db;
+}
+function idbReq(mode,fn){
+  return idb().then(db=>new Promise((res,rej)=>{
+    const tx=db.transaction('snaps',mode);
+    const rq=fn(tx.objectStore('snaps'));
+    tx.oncomplete=()=>res(rq&&rq.result);
+    tx.onerror=()=>rej(tx.error);
+    tx.onabort=()=>rej(tx.error);
+  }));
+}
+const idbPut=v=>idbReq('readwrite',s=>s.put(v));
+const idbGet=k=>idbReq('readonly',s=>s.get(k));
+const idbAll=()=>idbReq('readonly',s=>s.getAll());
+const idbDel=k=>idbReq('readwrite',s=>s.delete(k));
+
+// tag：auto＝每天一份（同一天覆盖），其余（pre-clear / pre-import / pre-adopt …）＝危险操作之前存一份
+async function takeSnapshot(tag){
+  try{
+    if(!localHasData())return null;
+    const ts=new Date();
+    const id=tag==='auto'?'auto-'+ts.toISOString().slice(0,10):tag+'-'+ts.getTime();
+    const rec={id,tag,ts:ts.toISOString(),hist:getHist(),wb:getWb()};
+    await idbPut(rec);
+    await pruneSnaps();
+    if(qs('#sc-data').classList.contains('on'))renderSnaps();
+    return id;
+  }catch(e){return null;}
+}
+async function pruneSnaps(){
+  const all=(await idbAll()).sort((a,b)=>b.ts.localeCompare(a.ts));
+  const seen={};
+  for(const s of all){
+    seen[s.tag]=(seen[s.tag]||0)+1;
+    if(seen[s.tag]>(s.tag==='auto'?30:10))await idbDel(s.id);
+  }
+}
+async function listSnaps(){
+  try{return(await idbAll()).sort((a,b)=>b.ts.localeCompare(a.ts));}catch(e){return[];}
+}
+const SNAP_TAG={auto:'每日自动','pre-clean-all':'清空前','pre-import':'导入前','pre-adopt':'云端覆盖前','pre-merge':'云端合并前','pre-restore':'恢复前','pre-clean':'清理前'};
+async function renderSnaps(){
+  const el=qs('#snap-list');
+  if(!el)return;
+  const list=await listSnaps();
+  if(!list.length){el.innerHTML='还没有快照（有听写记录或生词后会自动生成）';return;}
+  el.innerHTML=list.slice(0,12).map(s=>{
+    const c=countsOf(s),d=new Date(s.ts);
+    return `<div class="snap-row"><span>${esc(SNAP_TAG[s.tag]||s.tag)} · ${esc(d.toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}))} · ${c.sessions} 次听写 / ${c.words} 个生词</span>
+      <button class="sort-btn" onclick="restoreSnap('${esc(s.id)}')">恢复这份</button></div>`;
+  }).join('')+(list.length>12?`<div style="margin-top:6px">还有 ${list.length-12} 份更早的…</div>`:'');
+}
+async function restoreSnap(id){
+  const s=await idbGet(id);
+  if(!s)return;
+  const c=countsOf(s);
+  if(!confirm(`用这份快照覆盖当前记录？\n（${c.sessions} 次听写 / ${c.words} 个生词）\n覆盖前会先把现在的记录也存一份快照，之后还能恢复回来。`))return;
+  await takeSnapshot('pre-restore');
+  setLS('wl3_hist',s.hist||{});setLS('wl3_wb',s.wb||{});
+  markDirty();
+  refreshViews();
+  renderSafety();
+}
+
+function refreshViews(){
+  renderHome();
+  if(qs('#sc-wb').classList.contains('on'))renderWb();
+  if(qs('#sc-data').classList.contains('on'))refreshDataInfo();
+}
+
+// ── GitHub 云同步 ──
+const cloud={status:'off',msg:'',busy:false,pending:false,timer:null,lastAt:0};
+class CloudErr extends Error{constructor(kind,msg){super(msg);this.kind=kind;}}
+function getCloud(){const c=getLS(CLOUD_KEY);return(c&&c.token&&c.repo)?c:null;}
+
+function b64enc(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin='';
+  for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+  return btoa(bin);
+}
+function ghFetch(method,path,body,accept){
+  const c=getCloud();
+  const headers={'Accept':accept||'application/vnd.github+json','Authorization':'Bearer '+c.token,'X-GitHub-Api-Version':'2022-11-28'};
+  if(body)headers['Content-Type']='application/json';
+  return fetch('https://api.github.com'+path,{method,headers,cache:'no-store',body:body?JSON.stringify(body):undefined});
+}
+function ghFail(status,what){
+  if(status===401)return new CloudErr('auth','令牌无效或已过期，请重新生成并重新连接');
+  if(status===403||status===429)return new CloudErr('limit','GitHub 拒绝了请求（'+status+'）：令牌可能没有这个仓库的「Contents 读写」权限，或被临时限流');
+  if(status===404)return new CloudErr('notfound','找不到仓库，或令牌没有访问它的权限');
+  return new CloudErr('http',what+'失败（'+status+'）');
+}
+async function cloudRead(){
+  const c=getCloud(),br=c.branch||'main',base='/repos/'+c.repo+'/contents';
+  const lr=await ghFetch('GET',`${base}?ref=${br}&_=${Date.now()}`);
+  if(!lr.ok)throw ghFail(lr.status,'读取云端');
+  const list=await lr.json();
+  const ent=Array.isArray(list)?list.find(x=>x.type==='file'&&x.name===CLOUD_FILE):null;
+  if(!ent)return{data:null,sha:null};
+  const rr=await ghFetch('GET',`${base}/${CLOUD_FILE}?ref=${br}&_=${Date.now()}`,null,'application/vnd.github.raw+json');
+  if(!rr.ok)throw ghFail(rr.status,'读取云端文件');
+  let data;
+  try{data=JSON.parse(await rr.text());}
+  catch(e){throw new CloudErr('corrupt','云端文件读不出来（可能被手工改坏了），已暂停同步，不会覆盖它');}
+  return{data,sha:ent.sha};
+}
+async function cloudWrite(payload,sha,message){
+  const c=getCloud();
+  const body={message,content:b64enc(JSON.stringify(payload)),branch:c.branch||'main'};
+  if(sha)body.sha=sha;
+  const r=await ghFetch('PUT','/repos/'+c.repo+'/contents/'+CLOUD_FILE,body);
+  if(r.status===409||r.status===422)throw new CloudErr('conflict','云端刚被更新');
+  if(!r.ok)throw ghFail(r.status,'写入云端');
+}
+
+function setCloudStatus(state,msg){
+  cloud.status=state;cloud.msg=msg;
+  const el=qs('#cloud-status');
+  if(el){el.className='data-v cloud-'+state;el.textContent=({ok:'✅ ',syncing:'⏳ ',offline:'⚠️ ',error:'🔴 ',auth:'🔴 '}[state]||'')+msg;}
+  renderSafetyChip();
+  if(qs('#sc-data')&&qs('#sc-data').classList.contains('on'))renderSafety();
+}
+function scheduleCloudSync(ms){
+  if(!getCloud())return;
+  clearTimeout(cloud.timer);
+  cloud.timer=setTimeout(()=>cloudSync('auto'),ms==null?5000:ms);
+}
+function applyRemote(remote){
+  setLS('wl3_hist',remote.hist||{});setLS('wl3_wb',remote.wb||{});
+  const m=getMeta();m.syncedRev=remote.rev||0;m.dirty=false;saveMeta(m);
+  refreshViews();
+}
+
+// 同步规则（rev＝云端版本号，syncedRev＝上次同步时的云端版本号，dirty＝本机有没推上去的改动）：
+//   云端没动、本机没改 → 什么都不做      云端没动、本机改了 → 推上去
+//   云端更新、本机没改 → 拉下来覆盖本机  两边都改了       → 合并（只增不删）再推
+//   绝不用「空」的一边覆盖有数据的一边
+async function cloudSync(reason){
+  if(!getCloud())return;
+  if(cloud.busy){cloud.pending=true;return;}
+  cloud.busy=true;
+  setCloudStatus('syncing','同步中…');
+  try{
+    let rev=0,done=false;
+    for(let attempt=0;attempt<3&&!done;attempt++){
+      try{
+        const meta=getMeta();
+        const{data:remote,sha}=await cloudRead();
+        const remoteRev=remote?(remote.rev||0):0;
+        const remoteHas=hasDataIn(remote),localHas=localHasData();
+        const ahead=remoteRev>(meta.syncedRev||0);
+        let action;
+        if(!remote)action=localHas?'push':'none';
+        else if(!ahead)action=meta.dirty?((!localHas&&remoteHas)?'adopt':'push'):'none';
+        else if(!meta.dirty)action=(remoteHas||!localHas)?'adopt':'push';
+        else action=(localHas&&remoteHas)?'merge':(remoteHas?'adopt':'push');
+        if(!localHas&&!remoteHas)action='none';
+        rev=remoteRev;
+        if(action==='adopt'){
+          await takeSnapshot('pre-adopt');
+          applyRemote(remote);
+        } else if(action==='merge'||action==='push'){
+          if(action==='merge'){await takeSnapshot('pre-merge');mergeData(remote);refreshViews();}
+          const stamp=getMeta().changedAt||0;
+          const payload=dataPayload();
+          payload.rev=remoteRev+1;
+          await cloudWrite(payload,sha,`同步 ${meta.device} ${payload.savedAt.slice(0,16).replace('T',' ')}Z`);
+          const m=getMeta();
+          m.syncedRev=payload.rev;
+          if((m.changedAt||0)===stamp)m.dirty=false;
+          saveMeta(m);
+          rev=payload.rev;
+        } else if(remote&&!getMeta().dirty){
+          const m=getMeta();m.syncedRev=remoteRev;saveMeta(m);
+        }
+        done=true;
+      }catch(e){
+        if(e instanceof CloudErr&&e.kind==='conflict'&&attempt<2)continue;
+        throw e;
+      }
+    }
+    cloud.lastAt=Date.now();
+    const m=getMeta();m.lastSync=new Date().toISOString();saveMeta(m);
+    const t=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+    setCloudStatus('ok',`已同步 · ${t} · 云端第 ${rev} 版`+(getMeta().dirty?'（还有新改动，稍后继续同步）':''));
+  }catch(e){
+    if(e instanceof CloudErr){
+      setCloudStatus(e.kind==='auth'?'auth':'error',e.message);
+      if(e.kind==='limit'||e.kind==='http')scheduleCloudSync(120000);
+    } else {
+      setCloudStatus('offline','网络不通或 GitHub 暂时连不上。记录安全地留在本机，网络恢复后自动重试');
+      scheduleCloudSync(60000);
+    }
+  }finally{
+    cloud.busy=false;
+    if(cloud.pending){cloud.pending=false;scheduleCloudSync(1500);}
+  }
+}
+function cloudSyncNow(){cloudSync('manual');}
+
+async function cloudConnect(){
+  const out=qs('#cloud-connect-result');
+  const token=qs('#cloud-token').value.trim();
+  const repo=qs('#cloud-repo').value.trim().replace(/^https?:\/\/github\.com\//,'').replace(/\.git$/,'').replace(/\/$/,'');
+  if(!/^[\w-]{20,}$/.test(token)){out.style.color='var(--rb)';out.textContent='令牌格式不对：应该是 github_pat_ 开头的一长串字符，中间没有空格';return;}
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){out.style.color='var(--rb)';out.textContent='仓库写法应该是「用户名/仓库名」';return;}
+  const before=getLS(CLOUD_KEY);
+  setLS(CLOUD_KEY,{token,repo,branch:'main'});
+  out.style.color='var(--dim)';out.textContent='正在验证…';
+  try{
+    const r=await ghFetch('GET','/repos/'+repo);
+    if(!r.ok)throw ghFail(r.status,'验证');
+    const j=await r.json();
+    if(j.private===false)throw new CloudErr('public','这个仓库是公开的，你的听写记录会被所有人看到。请换成私有仓库');
+    if(j.permissions&&j.permissions.push===false)throw new CloudErr('perm','令牌只有读权限，需要把 Contents 改成 Read and write');
+    const m=getMeta();m.syncedRev=0;m.dirty=localHasData();saveMeta(m);
+    qs('#cloud-token').value='';
+    out.textContent='';
+    renderCloudCard();
+    await cloudSync('connect');
+  }catch(e){
+    if(before&&before.token)setLS(CLOUD_KEY,before);else localStorage.removeItem(CLOUD_KEY);
+    out.style.color='var(--rb)';
+    out.textContent=e instanceof CloudErr?e.message:'连不上 GitHub：请检查网络（或 VPN）后重试';
+    renderCloudCard();
+  }
+}
+function cloudDisconnect(){
+  if(!confirm('断开云同步？本机记录和云端备份都不会被删除，只是不再自动同步。\n（令牌在 GitHub 上仍然有效，想彻底作废请到 GitHub 设置里删除它。）'))return;
+  localStorage.removeItem(CLOUD_KEY);
+  setCloudStatus('off','');
+  renderCloudCard();renderSafety();renderSafetyChip();
+}
+function renderCloudCard(){
+  const c=getCloud();
+  const on=qs('#cloud-on'),setup=qs('#cloud-setup');
+  if(!on||!setup)return;
+  on.style.display=c?'':'none';
+  setup.style.display=c?'none':'';
+  if(c){
+    qs('#cloud-repo-show').textContent=c.repo;
+    qs('#cloud-token-tail').textContent=c.token.slice(-4);
+    qs('#cloud-history-link').href='https://github.com/'+c.repo+'/commits/'+(c.branch||'main');
+    if(!cloud.msg){const m=getMeta();setCloudStatus('off',m.lastSync?'上次同步 '+new Date(m.lastSync).toLocaleString('zh-CN'):'尚未同步');}
+  } else if(!qs('#cloud-repo').value){
+    qs('#cloud-repo').value=CLOUD_REPO_DEFAULT;
+  }
+}
+
+// ── 状态面板 / 首页提醒 ──
+async function renderSafety(){
+  const el=qs('#safety-list');
+  if(!el)return;
+  const c=getCloud(),m=getMeta();
+  let persisted=null;
+  try{persisted=navigator.storage&&navigator.storage.persisted?await navigator.storage.persisted():null;}catch(e){}
+  const snaps=await listSnaps();
+  const rows=[];
+  rows.push(c
+    ?(cloud.status==='ok'?['ok','云同步','已连接，最近一次同步正常']:cloud.status==='syncing'?['warn','云同步','同步中…']:['bad','云同步',cloud.msg||'已连接，等待同步'])
+    :['bad','云同步','还没开启——现在只有这个浏览器里有一份，清缓存 / 换电脑 / Safari 久不用都会丢']);
+  rows.push(persisted===true?['ok','浏览器存储','已设为「持久」，不会被浏览器自动清理']
+    :['warn','浏览器存储','没有「持久」保证。Safari 连续 7 天不碰这个网站，可能会把记录清空——所以云同步很重要']);
+  rows.push(snaps.length?['ok','本机快照',`${snaps.length} 份，最近一份 ${new Date(snaps[0].ts).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}`]:['warn','本机快照','暂无（有记录后自动生成）']);
+  const days=m.lastExport?Math.floor((Date.now()-new Date(m.lastExport).getTime())/864e5):null;
+  rows.push(days===null?['warn','手动备份文件','从未下载过']:['ok','手动备份文件',days===0?'今天下载过':days+' 天前下载过']);
+  el.innerHTML=rows.map(([k,a,b])=>`<div class="safety-row ${k}"><span class="safety-dot"></span><b>${a}</b><span>${esc(b)}</span></div>`).join('');
+  renderSnaps();
+}
+function renderSafetyChip(){
+  const el=qs('#home-alert');
+  if(!el)return;
+  const c=getCloud();
+  let html='';
+  if(!c){
+    html='<a class="alert warn" onclick="toData()">⚠ 你的听写记录和生词本现在只存在这个浏览器里，随时可能丢。点这里开启云备份（约 3 分钟，只做一次）</a>';
+  } else if(cloud.status==='auth'||cloud.status==='error'){
+    html=`<a class="alert bad" onclick="toData()">🔴 云同步出问题了：${esc(cloud.msg)}（点这里处理）</a>`;
+  } else if(cloud.status==='offline'&&Date.now()-(cloud.lastAt||0)>600000){
+    html='<a class="alert warn" onclick="toData()">⚠ 云同步暂时连不上，记录安全地留在本机，网络恢复后会自动补同步</a>';
+  }
+  el.innerHTML=html+(el.dataset.restore||'');
+}
+async function offerRestore(){
+  const el=qs('#home-alert');
+  if(!el||localHasData())return;
+  const snaps=(await listSnaps()).filter(hasDataIn);
+  if(!snaps.length)return;
+  const size=x=>{const q=countsOf(x);return q.sessions+q.words;};
+  snaps.sort((a,b)=>size(b)-size(a)||b.ts.localeCompare(a.ts));
+  const s=snaps[0],c=countsOf(s);
+  el.dataset.restore=`<a class="alert warn" onclick="restoreSnap('${esc(s.id)}')">♻ 当前记录是空的，但本机有一份快照（${esc(new Date(s.ts).toLocaleDateString('zh-CN'))}，${c.sessions} 次听写 / ${c.words} 个生词）。点这里恢复</a>`;
+  renderSafetyChip();
+}
+
+function initSafety(){
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});}catch(e){}
+  getMeta();
+  renderCloudCard();
+  renderSafetyChip();
+  if(localHasData())takeSnapshot('auto');
+  if(getCloud())scheduleCloudSync(1200);
+  else offerRestore();
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden&&getCloud()&&Date.now()-(cloud.lastAt||0)>60000)scheduleCloudSync(500);
+  });
+  window.addEventListener('online',()=>scheduleCloudSync(500));
+  setInterval(()=>{if(!document.hidden&&getCloud()&&!cloud.busy)scheduleCloudSync(100);},300000);
+}
+
 // ── INIT ──
 initControls();
 wbInit();
 if(window.innerWidth<640)qs('#wb-optwrap').open=false;
 renderHome();
+initSafety();
 </script>
 </body>
 </html>
