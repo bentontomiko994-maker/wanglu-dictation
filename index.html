@@ -414,6 +414,21 @@ canvas{display:block;}
 .data-steps{font-size:12px;color:var(--dim);line-height:2;margin:8px 0 0;}
 .data-steps b{color:var(--text);font-weight:700;}
 
+
+/* 清爽浅色为默认，深色仍可切换 */
+:root[data-theme="light"]{--bg:#f5f8fc;--bg2:#fff;--panel:#fff;--border:#dce5ef;--border2:#aebed0;--text:#1c2d40;--dim:#53677d;--accent:#1766bd;--green:#16713b;--gb:#16713b;--red:#b42318;--rb:#b42318;--yellow:#8a5a00;--purple:#7049a2;}
+:root[data-theme="light"] .btn-primary,:root[data-theme="light"] .seg button.on{color:#fff}
+:root[data-theme="light"] .res-tab.on{color:var(--accent)}
+:root[data-theme="light"] .audio-btn.on{color:var(--accent)}
+.theme-btn{white-space:nowrap;border:1px solid var(--border2);background:var(--panel);color:var(--text);padding:5px 9px;border-radius:6px;cursor:pointer}
+.study-panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin:16px 0}
+.study-panel p{font-size:13px;color:var(--dim);line-height:1.7;margin:6px 0 12px}
+.study-actions{display:flex;gap:8px;flex-wrap:wrap}
+.study-list{margin-top:14px;max-height:52vh;overflow:auto;border-top:1px solid var(--border)}
+.study-row{display:grid;grid-template-columns:32px 36px minmax(100px,1fr) minmax(100px,1fr);gap:8px;align-items:center;padding:10px 2px;border-bottom:1px solid var(--border);font-size:13px}
+.study-row button{border:0;background:none;cursor:pointer;font-size:16px}.study-word{font-family:var(--mono);font-weight:700;overflow-wrap:anywhere}.study-phon{font-size:11px;color:var(--dim);font-weight:400}.study-mean{color:var(--dim)}
+@media(max-width:640px){.topbar{gap:4px}.topbar-logo{font-size:10px;letter-spacing:0}.tab{padding:5px}.theme-btn{font-size:11px;padding:5px}.stats-header{flex-wrap:wrap}.study-row{grid-template-columns:25px 30px minmax(70px,1fr) minmax(70px,1fr);gap:4px}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -421,6 +436,7 @@ canvas{display:block;}
   <div class="topbar">
     <div class="topbar-logo">WL · 语料库</div>
     <div class="topbar-sep"></div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="切换深浅色">🌙 深色</button>
     <button class="tab on" id="tab-home" onclick="toHome()">章节</button>
     <button class="tab" id="tab-wb" onclick="toWb()">生词本</button>
     <button class="tab" id="tab-data" onclick="toData()">数据</button>
@@ -431,7 +447,7 @@ canvas{display:block;}
     <div class="screen on" id="sc-home">
       <div class="home-wrap">
         <div class="home-hero">
-          <h1>选择章节，开始听写</h1>
+          <h1>先看单词，再开始听写</h1>
           <p id="home-sub"></p>
           <div id="home-alert"></div>
         </div>
@@ -542,6 +558,11 @@ canvas{display:block;}
             <button class="btn btn-ghost" id="st-shuffle-btn" title="本章单词随机打乱顺序听写">乱序测试 →</button>
             <button class="btn btn-primary" id="st-start-btn">开始听写 →</button>
           </div>
+        </div>
+        <div class="study-panel">
+          <strong>先预习，再听写</strong><p id="study-progress"></p>
+          <div class="study-actions"><button class="btn btn-primary btn-sm" id="study-start">开始本批听写</button><button class="btn btn-ghost btn-sm" id="study-review">复习本章错词</button><button class="btn btn-ghost btn-sm" id="study-all">查看全部单词</button></div>
+          <div class="study-list" id="study-list"></div>
         </div>
         <div class="stats-summary" id="st-summary"></div>
         <div class="chart-section">
@@ -6769,7 +6790,7 @@ function diffCorrect(correct,typed){
 
 // ── STATE ──
 let curChap=null,curWords=[],curOrder=null,wbMode=false,curShuffle=false,wbSortBy='count',alignmentHistory=[],activeInputIndex=0;
-let manualCut=-1,sessionDone=false,resumed=false;
+let manualCut=-1,sessionDone=false,resumed=false,curBatch=null,curDraftChap=null;
 const MASTER_STREAK=2;   // 错题测试里连续写对几次 = 掌握
 
 // ── STORAGE ──
@@ -6788,6 +6809,7 @@ function recordResult(chap,pct,correct,total,wrongWords,allResults,mode,extra){
     mode:mode||'normal',
     date:new Date().toISOString(),
     chapTotal:extra.chapTotal||total,
+    batchStart:Number.isInteger(extra.batchStart)?extra.batchStart:null,
     undone:extra.undone||0,
     wrong:wrongWords.map(w=>({w:w.w,p:w.p,m:w.m,typed:w.typed||'',st:w.st||(w.typed?'wrong':'miss')})),
     all:allResults.map(r=>({w:r.w,p:r.p,m:r.m,typed:r.typed||'',ok:r.ok,st:r.st}))
@@ -6857,7 +6879,7 @@ function saveDraftNow(){
   if(wbMode||!curChap||sessionDone||!curOrder)return;
   if(!qs('#sc-dict').classList.contains('on'))return;
   const vals=alignmentValues();
-  const all=getDrafts(),key=draftKey(curChap,curShuffle);
+  const all=getDrafts(),key=draftKey(curDraftChap||curChap,curShuffle);
   if(!vals.some(v=>v.trim())&&manualCut<0)delete all[key];
   else all[key]={order:curOrder,vals,manualCut,ts:new Date().toISOString()};
   setLS(DRAFT_KEY,all);
@@ -6882,6 +6904,11 @@ function toHome(){saveDraftNow();stopAllAudio();renderHome();showScreen('home');
 function toWb(){saveDraftNow();stopAllAudio();wbLastAuto=-1;showScreen('wb');activateTab('wb');renderWb();}
 function toData(){saveDraftNow();stopAllAudio();refreshDataInfo();showScreen('data');activateTab('data');renderCloudCard();renderSafety();}
 const toImport=toData;
+
+// 主题只保存外观设置，不接触学习记录或同步令牌。
+function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('wl_theme',t)}catch(e){};const b=qs('#theme-btn');b.textContent=t==='light'?'🌙 深色':'☀️ 浅色';}
+function toggleTheme(){setTheme(document.documentElement.dataset.theme==='light'?'dark':'light');}
+setTheme((()=>{try{return localStorage.getItem('wl_theme')||'light'}catch(e){return 'light'}})());
 
 // ── HOME ──
 const GROUPS=[
@@ -6983,8 +7010,34 @@ function drawSparkline(canvasId,data){
   ctx.fillStyle=dotColor;ctx.fill();
 }
 
+// 根据已有的有序听写记录定位未做的词；旧记录仅在能匹配章节开头时使用。
+function attemptedIndices(chap){
+  const src=VOCAB[chap],seen=new Set();
+  chapSessions(chap).forEach(s=>{
+    if(s.mode==='shuffle'||!Array.isArray(s.all))return;
+    const start=Number.isInteger(s.batchStart)?s.batchStart:0;
+    if(s.all.every((r,i)=>src[start+i]&&src[start+i].w===r.w))s.all.forEach((_,i)=>seen.add(start+i));
+  });return seen;
+}
+function nextBatchStart(chap){const seen=attemptedIndices(chap),len=VOCAB[chap].length;for(let i=0;i<len;i++)if(!seen.has(i))return i;return len;}
+let studyChap=null,studyStart=0,studyShowAll=false;
+function renderStudy(){
+ const src=VOCAB[studyChap],end=Math.min(studyStart+20,src.length),done=studyStart>=src.length;
+ const pending=wbActiveItems().filter(w=>w.chap===studyChap).length;
+ qs('#study-progress').textContent=done?`本章已全部听写过 · ${pending} 个错词待复习。可从头重练或查看全部单词。`:`建议每批 20 词，当前第 ${studyStart+1}–${end} 词；先看一遍，再听写。达到 80% 后继续；本章 ${pending} 个错词待复习。`;
+ qs('#study-start').textContent=done?'从头重练第一批':`听写第 ${studyStart+1}–${end} 词`;
+ qs('#study-start').onclick=()=>startBatch(studyChap,done?0:studyStart);
+ qs('#study-review').disabled=!pending;qs('#study-review').onclick=()=>practiceChapWb(studyChap);
+ qs('#study-all').textContent=studyShowAll?'只看当前批':'查看全部单词';qs('#study-all').onclick=()=>{studyShowAll=!studyShowAll;renderStudy()};
+ const start=studyShowAll||done?0:studyStart,stop=studyShowAll||done?src.length:end;
+ qs('#study-list').innerHTML=src.slice(start,stop).map((w,i)=>`<div class="study-row"><span>${start+i+1}</span><button type="button" data-study-say="${start+i}" aria-label="播放 ${esc(w.w)}">🔊</button><span class="study-word">${esc(w.w)} <span class="study-phon">${w.p?'/'+esc(w.p)+'/':''}</span></span><span class="study-mean">${esc(w.m)}</span></div>`).join('');
+}
+function startBatch(chap,start){startDict(chap,null,{batchStart:start});}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-study-say]');if(b&&studyChap)playOne(VOCAB[studyChap][Number(b.dataset.studySay)].w)});
+
 // ── STATS SCREEN ──
 function openStats(chap){
+  studyChap=chap;studyStart=nextBatchStart(chap);studyShowAll=false;renderStudy();
   const sessions=chapSessions(chap);
   qs('#st-title').textContent=`章节 ${chap}`;
   qs('#st-subtitle').textContent=`共 ${VOCAB[chap].length} 个单词 · 已练 ${sessions.length} 次`;
@@ -7121,14 +7174,16 @@ function startDict(chap,words,opts){
   resumed=false;
   curOrder=null;
   curChap=chap;
+  curBatch=Number.isInteger(opts.batchStart)?{start:opts.batchStart}:null;
+  curDraftChap=curBatch?chap+'@batch:'+curBatch.start:chap;
   curShuffle=!!opts.shuffle;
   wbMode=!!words&&!curShuffle;
   let vals=null;
   if(words){
     curWords=shuffle([...words]);
   } else {
-    const src=VOCAB[chap];
-    let draft=opts.fresh?null:getDraft(chap,curShuffle);
+    const src=curBatch?VOCAB[chap].slice(curBatch.start,curBatch.start+20):VOCAB[chap];
+    let draft=opts.fresh?null:getDraft(curDraftChap,curShuffle);
     if(draft&&(draft.order.length!==src.length||draft.vals.length!==src.length||draft.order.some(i=>!(i>=0&&i<src.length))))draft=null;
     if(draft){
       curOrder=draft.order;vals=draft.vals;
@@ -7144,7 +7199,7 @@ function startDict(chap,words,opts){
   const sessions=chapSessions(chap||'__wb__');
   const sessionNum=sessions.length+1;
   const today=fmtDateFull(new Date());
-  qs('#d-chap').textContent=curShuffle?`章节 ${chap} · 乱序`:(wbMode?`错题测试 · ${curWords.length} 词`:`章节 ${chap}`);
+  qs('#d-chap').textContent=curBatch?`章节 ${chap} · 第 ${curBatch.start+1}–${curBatch.start+curWords.length} 词`:curShuffle?`章节 ${chap} · 乱序`:(wbMode?`错题测试 · ${curWords.length} 词`:`章节 ${chap}`);
   qs('#d-meta').textContent=wbMode?today:(curShuffle?`乱序测试 · 第 ${sessionNum} 次 · ${today}`:`第 ${sessionNum} 次 · ${today}`);
   qs('#btn-restart').style.display=wbMode?'none':'';
   buildRows();
@@ -7170,8 +7225,8 @@ function startDict(chap,words,opts){
 function restartDict(){
   if(wbMode||!curChap)return;
   if(alignmentValues().some(v=>v.trim())&&!confirm('清空已填的内容，重新开始这一次听写？'))return;
-  clearDraft(curChap,curShuffle);
-  startDict(curChap,null,{shuffle:curShuffle,fresh:true});
+  clearDraft(curDraftChap||curChap,curShuffle);
+  startDict(curChap,null,curBatch?{batchStart:curBatch.start,fresh:true}:{shuffle:curShuffle,fresh:true});
 }
 
 function buildRows(){
@@ -7384,8 +7439,8 @@ function finishDict(){
   saveWb(wb);
   const pct=Math.round(g.correct/g.judged*100);
   if(!wbMode&&curChap){
-    recordResult(curChap,pct,g.correct,g.judged,wrongWords,allResults,curShuffle?'shuffle':'normal',{chapTotal:curWords.length,undone:g.undone});
-    clearDraft(curChap,curShuffle);
+    recordResult(curChap,pct,g.correct,g.judged,wrongWords,allResults,curShuffle?'shuffle':'normal',{chapTotal:curWords.length,undone:g.undone,batchStart:curBatch?curBatch.start:null});
+    clearDraft(curDraftChap||curChap,curShuffle);
   }
   showResults(pct,g.correct,g.judged,wrongWords,allResults,{undone:g.undone,masteredNow,miss:g.miss});
 }
@@ -7412,10 +7467,18 @@ function showResults(pct,correct,total,wrongWords,allResults,meta){
   qs('#r-sub').innerHTML=sub;
 
   let acts=`<button class="btn btn-ghost" onclick="toHome()">← 章节</button>`;
+  if(curBatch){
+    const next=nextBatchStart(curChap),ready=pct>=80&&!meta.undone;
+    sub+=`<br>${ready?'本批达到 80%，可以继续下一批。':'建议先完成本批并复习错词，再重测；达到 80% 后继续。'}`;
+    qs('#r-sub').innerHTML=sub;
+    acts+=`<button class="btn btn-ghost" onclick="startBatch('${curChap}',${curBatch.start})">重测本批</button>`;
+    if(next<VOCAB[curChap].length)acts+=`<button class="btn ${ready?'btn-primary':'btn-ghost'}" onclick="openStats('${curChap}')">预习下一批</button>`;
+  }
   if(!wbMode&&curChap)
     acts+=`<button class="btn btn-ghost" onclick="openStats('${curChap}')">📊 查看记录</button>`;
   if(wbMode)
     acts+=`<button class="btn btn-ghost" onclick="toWb()">📖 回生词本</button><button class="btn btn-ghost" onclick="practiceWb()">再测一轮</button>`;
+  else if(curBatch){}
   else if(curShuffle)
     acts+=`<button class="btn btn-ghost" onclick="startDict('${curChap}',null,{shuffle:true,fresh:true})">重测（乱序）</button>`;
   else
