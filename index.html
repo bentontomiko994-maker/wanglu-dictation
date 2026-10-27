@@ -429,6 +429,16 @@ canvas{display:block;}
 .study-row button{border:0;background:none;cursor:pointer;font-size:16px}.study-word{font-family:var(--mono);font-weight:700;overflow-wrap:anywhere}.study-phon{font-size:11px;color:var(--dim);font-weight:400}.study-mean{color:var(--dim)}
 @media(max-width:640px){.topbar{gap:4px}.topbar-logo{font-size:10px;letter-spacing:0}.tab{padding:5px}.theme-btn{font-size:11px;padding:5px}.stats-header{flex-wrap:wrap}.study-row{grid-template-columns:25px 30px minmax(70px,1fr) minmax(70px,1fr);gap:4px}}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 批改信息放在输入行下方，不遮挡输入，也不截断词义 */
+.row-feedback{display:none;grid-column:3 / -1;line-height:1.6;padding:1px 6px 7px;font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+.row-feedback.on{display:block}.feedback-pair{font-family:var(--mono);color:var(--text)}
+.row-feedback .dx,.wr-typed .dx,.mw-typed .dx,.wb-hint .dx{color:#a51c16;background:#ffe0dd;text-decoration:underline;font-weight:700;border-radius:2px}
+.dy{color:#754500;background:#ffedb2;text-decoration:underline;font-weight:700;border-radius:2px}
+:root:not([data-theme="light"]) .row-feedback .dx,:root:not([data-theme="light"]) .wr-typed .dx,:root:not([data-theme="light"]) .mw-typed .dx,:root:not([data-theme="light"]) .wb-hint .dx{color:#ffd9d6;background:#7d2523}
+:root:not([data-theme="light"]) .dy{color:#fff1bd;background:#725013}
+.feedback-meaning{color:var(--text)}
+@media(max-width:640px){.dict-strip{height:auto;min-height:44px;padding:6px 10px;gap:4px;flex-wrap:wrap}.dict-chap,.dict-meta,.strip-stat{white-space:nowrap}.dict-meta{font-size:10px}.dict-strip-sep{flex:1 0 8px}.audio-btn{padding:3px 6px}.settings-pop{top:100%;right:8px}}
 </style>
 </head>
 <body>
@@ -7240,6 +7250,7 @@ function buildRows(){
         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="">
       <div class="row-answer" id="ans-${i}"></div>
       <div class="row-icon" id="ico-${i}"></div>
+      <div class="row-feedback" id="feedback-${i}"></div>
     </div>`;
   });
   scroll.innerHTML=html;
@@ -7266,6 +7277,7 @@ function buildRows(){
         document.getElementById('ans-'+i).textContent='';
         document.getElementById('ans-'+i).className='row-answer';
         document.getElementById('ico-'+i).textContent='';
+        const feedback=document.getElementById('feedback-'+i);feedback.innerHTML='';feedback.classList.remove('on');
       }
       updateStrip();
       saveDraftSoon();
@@ -7323,6 +7335,7 @@ function clearGradingState(){
   document.querySelectorAll('#d-scroll .row-input').forEach(inp=>{inp.className='row-input';});
   document.querySelectorAll('#d-scroll .row-answer').forEach(el=>{el.textContent='';el.className='row-answer';});
   document.querySelectorAll('#d-scroll .row-icon').forEach(el=>{el.textContent='';});
+  document.querySelectorAll('#d-scroll .row-feedback').forEach(el=>{el.innerHTML='';el.classList.remove('on');});
 }
 function applyAlignmentValues(values,focusIdx){
   values.forEach((value,i)=>{
@@ -7395,10 +7408,16 @@ function gradeRows(){
 function applyGradeUI(g){
   g.rows.forEach(r=>{
     const inp=document.getElementById('inp-'+r.i),ans=document.getElementById('ans-'+r.i),ico=document.getElementById('ico-'+r.i);
-    if(r.st==='undone'){inp.className='row-input undone';ans.textContent='';ans.className='row-answer';ico.textContent='';}
-    else if(r.st==='ok'){inp.className='row-input ok';ans.textContent='';ans.className='row-answer';ico.textContent='✓';}
-    else if(r.st==='wrong'){inp.className='row-input err';ans.textContent=r.w.w;ans.title=r.w.m;ans.className='row-answer reveal-err';ico.textContent='✗';}
-    else{inp.className='row-input skip';ans.textContent=r.w.w;ans.title=r.w.m;ans.className='row-answer reveal-err';ico.textContent='○';}
+    const feedback=document.getElementById('feedback-'+r.i);
+    ans.textContent='';ans.className='row-answer';feedback.innerHTML='';feedback.classList.remove('on');
+    if(r.st==='undone'){inp.className='row-input undone';ico.textContent='';return;}
+    inp.className='row-input '+(r.st==='ok'?'ok':r.st==='wrong'?'err':'skip');
+    ico.textContent=r.st==='ok'?'✓':r.st==='wrong'?'✗':'○';
+    const meaning=esc(r.w.m||'暂无中文释义');
+    if(r.st==='ok')feedback.innerHTML=`<span class="feedback-meaning">释义：${meaning}</span>`;
+    else if(r.st==='miss')feedback.innerHTML=`<span class="feedback-pair">漏写：<b class="dy">${esc(r.w.w)}</b></span> · <span class="feedback-meaning">${meaning}</span>`;
+    else feedback.innerHTML=`<span class="feedback-pair">你写：${diffTyped(r.val,r.w.w)}　正确：${diffCorrect(r.w.w,r.val)}</span> · <span class="feedback-meaning">${meaning}</span>`;
+    feedback.classList.add('on');
   });
 }
 function gradeSummary(g){
@@ -7509,7 +7528,7 @@ function resRow(w,ok){
   const typedTxt=w.typed?(ok?esc(w.typed):diffTyped(w.typed,w.w)):'<i>（没写）</i>';
   return `<div class="wrong-row">
     <button class="wr-play" data-say="${esc(w.w)}" title="播放发音">🔊</button>
-    <span class="wr-correct ${ok?'ok':''}">${esc(w.w)}</span>
+    <span class="wr-correct ${ok?'ok':''}">${ok?esc(w.w):w.typed?diffCorrect(w.w,w.typed):`<b class="dy">${esc(w.w)}</b>`}</span>
     <span class="wr-typed ${ok?'ok':''}">${typedTxt}</span>
     <span class="wr-mean">${esc(w.m)}${w.p?` <span class="wr-phon">/${esc(w.p)}/</span>`:''}</span>
     <span class="wr-icon ${ok?'ok':'err'}">${ok?'✓':'✗'}</span>
@@ -7588,7 +7607,7 @@ function renderModalList(mode){
   data.forEach(w=>{
     const ok=w.ok;
     html+=`<div class="modal-word-row ${ok?'right-entry':'wrong-entry'}">
-      <span class="mw-correct ${ok?'ok':'err'}"><button class="wr-play" data-say="${esc(w.w)}" title="播放发音">🔊</button> ${esc(w.w)}</span>
+      <span class="mw-correct ${ok?'ok':'err'}"><button class="wr-play" data-say="${esc(w.w)}" title="播放发音">🔊</button> ${ok?esc(w.w):w.typed?diffCorrect(w.w,w.typed):`<b class="dy">${esc(w.w)}</b>`}</span>
       <span class="mw-typed ${ok?'ok':''}">${w.typed?(ok?esc(w.typed):diffTyped(w.typed,w.w)):'<i>（没写）</i>'}</span>
       <span class="mw-mean">${esc(w.m)}</span>
     </div>`;
@@ -8390,7 +8409,7 @@ function wbCheckLine(inp){
     inp.classList.remove('shake');void inp.offsetWidth;
     inp.classList.add('bad','shake');
     wbReveal(i);
-    if(hint)hint.innerHTML=`正确：<b>${esc(w.word)}</b> · 你写的：${diffTyped(val,w.word)}`;
+    if(hint)hint.innerHTML=`正确：<b>${diffCorrect(w.word,val)}</b> · 你写的：${diffTyped(val,w.word)} · 释义：${esc(w.mean||'暂无中文释义')}`;
     inp.select();
   }
 }
